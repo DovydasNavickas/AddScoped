@@ -3,6 +3,7 @@ using Microsoft.AspNet.Hosting;
 using Microsoft.AspNet.Http;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -18,6 +19,7 @@ namespace Scopes
             services.AddScoped<ILazyCount, ScopedClass>();
             services.AddScoped<ILazyCount, ScopedClass2>();
             services.AddScoped<IPrincipalSlim, PrincipalSlim>();
+            services.AddScoped<Handler>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -30,54 +32,52 @@ namespace Scopes
                 var request = context.Request;
                 var response = context.Response;
                 var items = context.Items;
+
+                Func<IPrincipalSlim, Task> printPrincipal = async principal =>
+                {
+                    await response.WriteAsync($"{principal.UserId}{Environment.NewLine}");
+                    var tasks = principal.Claims?.Select(async claim => await response.WriteAsync($"  {claim.Value}{Environment.NewLine}"));
+                    if (tasks != null)
+                    {
+                        await Task.WhenAll(tasks);
+                    }
+                    await response.WriteAsync($"{Environment.NewLine}");
+                };
+
                 if (request.Path == "/test1")
                 {
-                    var scopedClass = context.RequestServices.GetRequiredService<ScopedClass>();
-                    await response.WriteAsync($"{scopedClass.LazyCount.Value}{Environment.NewLine}");
 
-                    var scopedClass2 = context.RequestServices.GetRequiredService<ScopedClass>();
-                    await response.WriteAsync($"{scopedClass2.LazyCount.Value}{Environment.NewLine}");
                 }
                 else if (request.Path == "/test2")
                 {
-                    var scopedClass = context.RequestServices.GetRequiredService<ScopedClass>();
-                    await response.WriteAsync($"{scopedClass.LazyCount.Value}{Environment.NewLine}");
 
-                    var x = StaticContainer.Count;
-                    var y = StaticContainer.Count;
-
-                    var scopedClass2 = context.RequestServices.GetRequiredService<ScopedClass>();
-                    await response.WriteAsync($"{scopedClass2.LazyCount.Value}{Environment.NewLine}");
                 }
                 else if (request.Path == "/test3")
                 {
                     using (var serviceScope = app.ApplicationServices.GetRequiredService<IServiceScopeFactory>().CreateScope())
                     {
+                        var principal = serviceScope.ServiceProvider.GetRequiredService<IPrincipalSlim>();
 
-                        var scopedClass = serviceScope.ServiceProvider.GetRequiredService<ScopedClass>();
-                        await response.WriteAsync($"{scopedClass.LazyCount.Value}{Environment.NewLine}");
+                        principal.UserId = "users-1";
+                        principal.Claims = new Dictionary<string, string>
+                        {
+                            ["cl1"] = "Claim 1",
+                            ["cl2"] = "Claim 2",
+                            ["cl3"] = "Claim 3",
+                        };
 
-                        var scopedClass2 = serviceScope.ServiceProvider.GetRequiredService<ScopedClass>();
-                        await response.WriteAsync($"{scopedClass2.LazyCount.Value}{Environment.NewLine}");
+                        var handler = serviceScope.ServiceProvider.GetRequiredService<Handler>();
+                        await printPrincipal(handler.Principal);
                     }
 
                     using (var serviceScope = app.ApplicationServices.GetRequiredService<IServiceScopeFactory>().CreateScope())
                     {
+                        var principal = serviceScope.ServiceProvider.GetRequiredService<IPrincipalSlim>();
 
-                        var iServiceProvider = serviceScope.ServiceProvider;//app.ApplicationServices;
-                        var services = iServiceProvider.GetServices<ILazyCount>();
-                        var iLazyCount = iServiceProvider.GetRequiredService<ILazyCount>();
+                        principal.UserId = "users-2";
 
-                        var tasks = services.Select(async x => await response.WriteAsync($"ILazyCount: {x.LazyCount.Value}{Environment.NewLine}"));
-                        await Task.WhenAll(tasks);
-                        await response.WriteAsync($"{iLazyCount.LazyCount.Value}{Environment.NewLine}");
-
-
-                        var scopedClass = serviceScope.ServiceProvider.GetRequiredService<ScopedClass>();
-                        await response.WriteAsync($"{scopedClass.LazyCount.Value}{Environment.NewLine}");
-
-                        var scopedClass2 = serviceScope.ServiceProvider.GetRequiredService<ScopedClass>();
-                        await response.WriteAsync($"{scopedClass2.LazyCount.Value}{Environment.NewLine}");
+                        var handler = serviceScope.ServiceProvider.GetRequiredService<Handler>();
+                        await printPrincipal(handler.Principal);
                     }
                 }
                 else
