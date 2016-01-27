@@ -17,6 +17,7 @@ namespace Scopes
             services.AddScoped<ScopedClass>();
             services.AddScoped<ILazyCount, ScopedClass>();
             services.AddScoped<ILazyCount, ScopedClass2>();
+            services.AddScoped<IPrincipalSlim, PrincipalSlim>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
